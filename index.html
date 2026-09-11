@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Physics-based calculator for ureteroscopy inflow/outflow balance and required Neptune suction pressure. Model accounts for scope geometry, working channel, laser obstruction, and clinical safety margins.">
+<meta property="og:title" content="IRP Suction Calculator">
+<meta property="og:description" content="Calculate required Neptune suction pressure for ureteroscopy based on scope geometry and inflow pressure. Steady-state Poiseuille model with clinical safety factor.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://jonathankatz.me/irp">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="IRP Suction Calculator">
+<meta name="twitter:description" content="Physics-based IRP calculator for ureteroscopy. Model working channel, laser, and scope geometry to determine required Neptune pressure.">
+<title>IRP Suction Calculator</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --border:    #21262d;
+    --accent:    #58a6ff;
+    --danger:    #f85149;
+    --warn:      #e3b341;
+    --safe:      #3fb950;
+    --text:      #e6edf3;
+    --muted:     #7d8590;
+    --mono:      'JetBrains Mono', monospace;
+    --sans:      'Inter', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 520px;
+    overflow: hidden;
+  }
+
+  .card-header {
+    padding: 1.5rem 2rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 0.4rem;
+  }
+
+  h1 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.3;
+  }
+
+  h1 span {
+    color: var(--muted);
+    font-weight: 400;
+  }
+
+  .card-body {
+    padding: 1.75rem 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+  }
+
+  label strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  input[type="number"] {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 1rem;
+    font-weight: 600;
+    padding: 0.6rem 2.8rem 0.6rem 0.8rem;
+    outline: none;
+    transition: border-color 0.15s;
+    -moz-appearance: textfield;
+  }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+  input[type="number"]:focus { border-color: var(--accent); }
+
+  .unit {
+    position: absolute;
+    right: 0.7rem;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--muted);
+    pointer-events: none;
+  }
+
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Inflow pressure row */
+  .inflow-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+
+  /* Result panel */
+  .result {
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    transition: border-color 0.3s;
+  }
+
+  .result.safe   { border-color: var(--safe); }
+  .result.warn   { border-color: var(--warn); }
+  .result.danger { border-color: var(--danger); }
+
+  .result-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.5rem;
+  }
+
+  .result-main {
+    font-family: var(--mono);
+    font-size: 2.4rem;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 0.3rem;
+    transition: color 0.3s;
+  }
+
+  .result.safe   .result-main { color: var(--safe); }
+  .result.warn   .result-main { color: var(--warn); }
+  .result.danger .result-main { color: var(--danger); }
+  .result.neutral .result-main { color: var(--accent); }
+
+  .result-sub {
+    font-size: 0.8rem;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* Debug/breakdown */
+  .breakdown {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+  }
+
+  .breakdown-title {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.75rem;
+  }
+
+  .breakdown-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.3rem 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.8rem;
+  }
+  .breakdown-row:last-child { border-bottom: none; }
+  .breakdown-row .bk-label { color: var(--muted); }
+  .breakdown-row .bk-val {
+    font-family: var(--mono);
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .warning-box {
+    background: rgba(248,81,73,0.08);
+    border: 1px solid rgba(248,81,73,0.3);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    font-size: 0.78rem;
+    color: #f85149cc;
+    line-height: 1.5;
+    display: none;
+  }
+  .warning-box.visible { display: block; }
+
+  .gap-bar-wrap {
+    margin-top: 0.5rem;
+  }
+  .gap-bar-label {
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-bottom: 0.3rem;
+    display: flex;
+    justify-content: space-between;
+  }
+  .gap-bar-track {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .gap-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent);
+    transition: width 0.3s;
+  }
+
+  /* Math notes */
+  .math-notes {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    font-size: 0.8rem;
+    line-height: 1.7;
+    color: var(--muted);
+  }
+  .math-notes h2 {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 1rem;
+  }
+  .math-notes h3 {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text);
+    margin: 1rem 0 0.35rem;
+  }
+  .math-notes p { margin-bottom: 0.5rem; }
+  .math-notes .eq {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.5rem 0.75rem;
+    margin: 0.5rem 0;
+    color: var(--accent);
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+  }
+  .math-notes .highlight { color: var(--text); font-weight: 600; }
+  .math-notes .warn-text { color: var(--warn); }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="card-header">
+    <div class="eyebrow">Ureteroscopy · Fluid Dynamics</div>
+    <h1>IRP Suction Calculator <span>/ annular gap model</span></h1>
+  </div>
+
+  <div class="card-body">
+
+    <!-- Geometry inputs -->
+    <div class="field-row">
+      <div class="field">
+        <label><strong>Sheath inner diameter</strong></label>
+        <div class="input-wrap">
+          <input type="number" id="sheathID" value="11" min="1" max="30" step="0.1">
+          <span class="unit">Fr</span>
+        </div>
+      </div>
+      <div class="field">
+        <label><strong>Scope outer diameter</strong></label>
+        <div class="input-wrap">
+          <input type="number" id="scopeOD" value="9" min="1" max="30" step="0.1">
+          <span class="unit">Fr</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gap visualiser -->
+    <div class="gap-bar-wrap">
+      <div class="gap-bar-label">
+        <span>Annular gap</span>
+        <span id="gapLabel">—</span>
+      </div>
+      <div class="gap-bar-track">
+        <div class="gap-bar-fill" id="gapBar" style="width:0%"></div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Pressures -->
+    <div class="inflow-row">
+      <div class="field">
+        <label><strong>Inflow pressure</strong></label>
+        <div class="input-wrap">
+          <input type="number" id="inflowP" value="150" min="1" max="500" step="5">
+          <span class="unit">mmHg</span>
+        </div>
+      </div>
+      <div class="field">
+        <label><strong>IRP target</strong></label>
+        <div class="input-wrap">
+          <input type="number" id="irpTarget" value="25" min="1" max="200" step="5">
+          <span class="unit">mmHg</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tube lengths -->
+    <div class="field-row">
+      <div class="field">
+        <label><strong>Scope length</strong></label>
+        <div class="input-wrap">
+          <input type="number" id="scopeLen" value="65" min="10" max="100" step="1">
+          <span class="unit">cm</span>
+        </div>
+      </div>
+      <div class="field">
+        <label><strong>Sheath length</strong></label>
+        <div class="input-wrap">
+          <input type="number" id="sheathLen" value="50" min="5" max="60" step="1">
+          <span class="unit">cm</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Inflow parameters -->
+    <div class="field-row">
+      <div class="field">
+        <label>Working channel diameter</label>
+        <div class="input-wrap">
+          <input type="number" id="wcDiameter" value="3.6" min="0.5" max="10" step="0.1">
+          <span class="unit">Fr</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Laser diameter</label>
+        <div class="input-wrap">
+          <input type="number" id="laserDiameter" value="200" min="0" max="500" step="10">
+          <span class="unit">µm</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Clinical safety factor -->
+    <div class="field" style="margin-top: 0.5rem;">
+      <label><strong>Clinical safety factor</strong></label>
+      <div style="display: flex; align-items: center; gap: 1rem; margin-top: 0.4rem;">
+        <input type="range" id="safetyFactor" min="1" max="2.5" step="0.1" value="1.5" style="flex: 1; height: 4px; cursor: pointer;">
+        <span id="safetyFactorVal" style="font-family: var(--mono); font-weight: 600; color: var(--text); min-width: 3rem; text-align: right;">1.5×</span>
+      </div>
+      <div style="font-size: 0.7rem; color: var(--muted); margin-top: 0.3rem;">Accounts for pulsatility, non-ideal geometry, debris</div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Warning -->
+    <div class="warning-box" id="warnBox"></div>
+
+    <!-- Result -->
+    <div class="result neutral" id="resultBox">
+      <div class="result-label">Required suction pressure</div>
+      <div class="result-main" id="resultVal">—</div>
+      <div class="result-sub" id="resultSub">Enter values above to calculate</div>
+    </div>
+
+    <!-- Breakdown -->
+    <div class="breakdown">
+      <div class="breakdown-title">Physics breakdown</div>
+      <div class="breakdown-row">
+        <span class="bk-label">Annular gap</span>
+        <span class="bk-val" id="bkGap">—</span>
+      </div>
+      <div class="breakdown-row">
+        <span class="bk-label">Annular flow factor (r⁴ equiv)</span>
+        <span class="bk-val" id="bkFactor">—</span>
+      </div>
+      <div class="breakdown-row">
+        <span class="bk-label">Inflow resistance constant</span>
+        <span class="bk-val" id="bkInflowK">—</span>
+      </div>
+      <div class="breakdown-row">
+        <span class="bk-label">Outflow resistance constant</span>
+        <span class="bk-val" id="bkOutflowK">—</span>
+      </div>
+      <div class="breakdown-row">
+        <span class="bk-label">Flow rate at equilibrium</span>
+        <span class="bk-val" id="bkFlow">—</span>
+      </div>
+    </div>
+
+    <!-- Math notes -->
+    <div class="math-notes">
+      <h2>How the maths works</h2>
+
+      <h3>1 · Poiseuille's Law — the foundation</h3>
+      <p>All fluid flow here obeys Poiseuille's Law for laminar flow through a tube:</p>
+      <span class="eq">Q = (π × r⁴ × ΔP) / (8 × η × L)</span>
+      <p>Where <span class="highlight">Q</span> = flow rate, <span class="highlight">r</span> = radius, <span class="highlight">ΔP</span> = pressure difference, <span class="highlight">η</span> = fluid viscosity (saline ≈ 0.001 Pa·s), <span class="highlight">L</span> = tube length. The <span class="warn-text">r⁴ term</span> is critical — doubling the radius increases flow 16×. A tiny change in gap has an enormous effect.</p>
+
+      <h3>2 · Inflow (through the scope working channel)</h3>
+      <p>Saline pumped through the scope's working channel behaves as flow through a tube or annular space (if a laser is present). The working channel diameter is user-configurable (default 3.6 Fr); most instruments have effective diameters 3.0–3.6 Fr. If a laser occupies part of the channel, fluid flows in the annular gap around it. The driving pressure is pump pressure minus whatever IRP already exists in the kidney:</p>
+      <span class="eq">Q_in = K_in × (P_pump − IRP)</span>
+      <span class="eq">K_in = (π × r_wc⁴) / (8 × η × L_scope)  [or annular formula if laser present]</span>
+
+      <h3>3 · Outflow (through the annular gap)</h3>
+      <p>Fluid escapes through the ring-shaped gap between the scope outer wall and the sheath inner wall. This is not a simple circle — it's an annulus, so the flow factor uses the exact annular Poiseuille formula:</p>
+      <span class="eq">Q_out = K_out × (IRP − (−P_suction))</span>
+      <span class="eq">K_out = (π × F_annular) / (8 × η × L_sheath)</span>
+      <span class="eq">F_annular = (r_o⁴ − r_i⁴) − (r_o² − r_i²)² / ln(r_o/r_i)</span>
+      <p>Outflow is driven by the pressure difference: kidney pressure (IRP) minus the negative pressure from the suction pump (−P_suction). This is equivalent to IRP plus the suction magnitude. The annular factor F is <span class="warn-text">orders of magnitude smaller</span> than r⁴ for a solid tube of the same outer radius — this is why the gap is the bottleneck, not the sheath size.</p>
+
+      <h3>4 · Solving for required suction</h3>
+      <p>At equilibrium inflow must equal outflow. Setting Q_in = Q_out and solving for the suction pressure that achieves your IRP target:</p>
+      <span class="eq">K_in × (P_pump − IRP) = K_out × (IRP − (−P_suction))</span>
+      <span class="eq">P_suction = K_in × (P_pump − IRP) / K_out − IRP</span>
+      <p>The calculator solves this in real time. The result is then multiplied by the <span class="highlight">clinical safety factor</span> (default 1.5×) to account for non-ideal real-world conditions (pulsatility, scope deflection, debris). If the theoretical P_suction (before safety factor) comes out negative, passive drainage alone is sufficient — no Neptune needed.</p>
+
+      <h3>5 · Why sheath size matters so much</h3>
+      <p>Even a 1Fr increase in sheath ID widens the gap by ~0.17mm on each side. Because of the r⁴ relationship inside F_annular, this small change can <span class="highlight">double or triple outflow capacity</span>, dramatically cutting the Neptune pressure required. This is the physical basis for using 12–14Fr sheaths with 9Fr scopes.</p>
+
+      <h3>Assumptions &amp; limitations</h3>
+      <p>This model assumes laminar, steady-state flow of Newtonian fluid (saline). Key limitations:</p>
+      <p><span class="highlight">Working channel diameter</span> — Most flexible ureteroscopes have effective hydraulic diameters slightly smaller than nominal spec. Default is 3.6 Fr; try reducing to 3.0–3.2 Fr for conservative estimates.</p>
+      <p><span class="highlight">Scope position</span> — Scope deflection, eccentric positioning, and debris reduce real-world outflow. The annular flow factor may be 20–40% higher in practice.</p>
+      <p><span class="highlight">Pulsatile flow &amp; transients</span> — This model solves steady-state equilibrium. Real pump surges and outflow lag during irrigation bursts mean peak IRP spikes above the equilibrium prediction.</p>
+      <p>For these reasons, the <span class="highlight">clinical safety factor</span> (default 1.5×) multiplies the calculated suction to provide margin. Verify margins empirically under real operating conditions.</p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// French to meters: 1 Fr = 1/3 mm
+const frToM = fr => (fr / 3) * 1e-3;
+const mmhgToPa = mmhg => mmhg * 133.322;
+const paToMmhg = pa => pa / 133.322;
+const micronToM = micron => micron * 1e-6;
+
+function annularFlowFactor(rOuter, rInner) {
+  // Exact annular Poiseuille factor
+  const ro4 = Math.pow(rOuter, 4);
+  const ri4 = Math.pow(rInner, 4);
+  const num = Math.pow(ro4 - ri4, 1); // r_o^4 - r_i^4 ... wait, full formula:
+  // Q = pi*dP/(8*eta*L) * [ (ro^4 - ri^4) - (ro^2-ri^2)^2 / ln(ro/ri) ]
+  const term1 = ro4 - ri4;
+  const term2 = Math.pow(rOuter * rOuter - rInner * rInner, 2) / Math.log(rOuter / rInner);
+  return term1 - term2;
+}
+
+function calculate() {
+  const sheathFr  = parseFloat(document.getElementById('sheathID').value);
+  const scopeFr   = parseFloat(document.getElementById('scopeOD').value);
+  const inflowP   = parseFloat(document.getElementById('inflowP').value);
+  const irpTarget = parseFloat(document.getElementById('irpTarget').value);
+  const scopeLenM  = parseFloat(document.getElementById('scopeLen').value) / 100;
+  const sheathLenM = parseFloat(document.getElementById('sheathLen').value) / 100;
+  const wcDiamFr   = parseFloat(document.getElementById('wcDiameter').value);
+  const laserDiamMicron = parseFloat(document.getElementById('laserDiameter').value);
+
+  const eta = 0.001; // saline viscosity Pa·s
+
+  // Radii in meters
+  const rSheath = frToM(sheathFr) / 2;   // sheath inner radius
+  const rScopeOD = frToM(scopeFr) / 2;   // scope outer radius
+  const rWC = frToM(wcDiamFr) / 2;       // working channel radius
+  const rLaser = micronToM(laserDiamMicron) / 2; // laser radius
+
+  const gapMm = (rSheath - rScopeOD) * 1000;
+
+  // Update gap bar (max ~2mm gap for scale)
+  document.getElementById('gapLabel').textContent = gapMm.toFixed(2) + ' mm';
+  const barPct = Math.min(100, (gapMm / 2) * 100);
+  document.getElementById('gapBar').style.width = barPct + '%';
+
+  const warnBox = document.getElementById('warnBox');
+
+  // Validation
+  if (rSheath <= rScopeOD) {
+    warnBox.textContent = 'Sheath inner diameter must be larger than scope outer diameter.';
+    warnBox.classList.add('visible');
+    setResult('—', '—', 'neutral');
+    return;
+  }
+  warnBox.classList.remove('visible');
+
+  // Inflow: Poiseuille through working channel (with laser obstruction)
+  // If laser diameter is significant, use annular flow; otherwise use simple circle
+  let K_in;
+  if (laserDiamMicron > 0 && rLaser > 0) {
+    // Annular flow around laser
+    const af = annularFlowFactor(rWC, rLaser);
+    K_in = (Math.PI * af) / (8 * eta * scopeLenM);
+  } else {
+    // Simple circular flow (no laser)
+    K_in = (Math.PI * Math.pow(rWC, 4)) / (8 * eta * scopeLenM);
+  }
+
+  // Outflow: annular gap
+  const af = annularFlowFactor(rSheath, rScopeOD);
+  const K_out = (Math.PI * af) / (8 * eta * sheathLenM);
+
+  // At equilibrium: Q_in = Q_out
+  // K_in * (P_inflow - IRP) = K_out * (IRP - (-P_suction))
+  // Solving for P_suction at IRP = irpTarget:
+  // P_suction = K_in*(P_inflow - IRP)/K_out - IRP
+
+  const inflowPa  = mmhgToPa(inflowP);
+  const irpPa     = mmhgToPa(irpTarget);
+
+  const suctionPa = K_in * (inflowPa - irpPa) / K_out - irpPa;
+  let suctionMmhg = paToMmhg(suctionPa);
+
+  // Apply clinical safety factor
+  const safetyFactor = parseFloat(document.getElementById('safetyFactor').value);
+  const suctionWithMargin = suctionMmhg * safetyFactor;
+
+  // Flow at equilibrium
+  const Q_mLs = K_in * (inflowPa - irpPa) * 1e6; // m³/s → mL/s
+  const Q_mLmin = Q_mLs * 60;
+
+  // Update breakdown
+  document.getElementById('bkGap').textContent = gapMm.toFixed(3) + ' mm';
+  document.getElementById('bkFactor').textContent = af.toExponential(2) + ' m⁴';
+  document.getElementById('bkInflowK').textContent = K_in.toExponential(2);
+  document.getElementById('bkOutflowK').textContent = K_out.toExponential(2);
+  document.getElementById('bkFlow').textContent = Q_mLmin.toFixed(1) + ' mL/min';
+
+  if (suctionMmhg < 0) {
+    // Passive drainage sufficient
+    setResult(
+      '0 mmHg',
+      `Passive drainage is sufficient — annular gap outflow exceeds inflow even without suction. IRP will be below ${irpTarget} mmHg at atmospheric pressure.`,
+      'safe'
+    );
+  } else {
+    const rounded = Math.ceil(suctionWithMargin / 5) * 5;
+    const nearestNeptune = Math.round(rounded / 20) * 20;
+    let statusClass = 'safe';
+    let comment = '';
+
+    if (rounded <= 200) {
+      statusClass = 'safe';
+      comment = `Set Neptune to ${nearestNeptune} mmHg. Verify margins under real conditions (pulsatility, debris). ✓`;
+    } else if (rounded <= 400) {
+      statusClass = 'warn';
+      comment = `Set Neptune to ${nearestNeptune} mmHg. Verify adequate margin under realistic conditions.`;
+    } else if (rounded <= 600) {
+      statusClass = 'warn';
+      comment = `Set Neptune to ${nearestNeptune} mmHg (max device capability ~600 mmHg). Limited margin for error. Consider a wider sheath or lower inflow pressure.`;
+    } else {
+      statusClass = 'danger';
+      comment = 'Exceeds Neptune maximum (~600 mmHg). A wider sheath or lower inflow pressure is needed.';
+    }
+
+    setResult(
+      rounded + ' mmHg',
+      `With ${safetyFactor}× clinical safety factor to keep IRP < ${irpTarget} mmHg at ${inflowP} mmHg inflow. ${comment}`,
+      statusClass
+    );
+  }
+}
+
+function setResult(val, sub, cls) {
+  const box = document.getElementById('resultBox');
+  const valEl = document.getElementById('resultVal');
+  const subEl = document.getElementById('resultSub');
+  box.className = 'result ' + cls;
+  valEl.textContent = val;
+  subEl.textContent = sub;
+}
+
+// Wire up all inputs
+document.querySelectorAll('input').forEach(el => {
+  el.addEventListener('input', calculate);
+});
+
+// Wire up safety factor display
+document.getElementById('safetyFactor').addEventListener('input', e => {
+  document.getElementById('safetyFactorVal').textContent = e.target.value + '×';
+  calculate();
+});
+
+calculate();
+</script>
+</body>
+</html>
