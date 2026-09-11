@@ -14,7 +14,6 @@ The model treats inflow (through the scope's working channel) and outflow (throu
 - **Suction tubing resistance not modeled.** The outflow resistance term currently only accounts for the sheath length/diameter. In reality, suction tubing runs in series between the sheath and the Neptune canister and adds its own resistance, which would reduce the required suction setting relative to this model's estimate. This is a planned addition.
 - **Trapped air / compressibility.** Air in the suction line acts as compliance rather than a rigid conduit, which can cause measured pressure at the canister to lag or under-represent true pressure at the kidney. Not currently modeled.
 - **Idealized geometry.** Assumes concentric, straight, non-deflected scope position within the sheath. Real eccentric positioning, debris, and scope deflection can meaningfully change the annular flow factor (potentially 20–40% higher resistance in practice).
-- **Validated in only one of four tested benchtop configurations.** In benchtop testing, calculator agreement with measured suction was adequate for a HugeMed/8.5-Fr configuration (R²=0.75, MAE=15.6 mmHg) but poor for Richard Wolf 10-Fr and 11-Fr sheath configurations. Larger annular gaps showed weaker agreement, consistent with possible non-laminar flow at larger gap sizes.
 - **This is a decision aid, not a validated clinical device.** We do not recommend relying on this calculator alone to determine safe suction parameters. Always verify suction settings under real operating conditions.
 
 ## Contributing
